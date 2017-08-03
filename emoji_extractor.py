@@ -1,71 +1,35 @@
+import re
 import os
-import sys
-import struct
 
-def bin_to_int(input_bin):
-    return struct.unpack(">I", input_bin)[0]
+# Some versions of OSX store the font as a ttf, and other as ttc.
+font_location = "/System/Library/Fonts/Apple Color Emoji.ttc"
+if not os.path.exists(font_location):
+    font_location = font_location[:-1] + "f"
 
-# List to store the count of emoji in each folder
-folder_index = dict()
-writing = False
-index = 0
+with open(font_location, "rb") as in_file:
+    font = in_file.read()
 
-if os.path.exists("/System/Library/Fonts/Apple Color Emoji.ttc"):
-    font_path = "/System/Library/Fonts/Apple Color Emoji.ttc"
-elif os.path.exists("/System/Library/Fonts/Apple Color Emoji.ttf"):
-    font_path = "/System/Library/Fonts/Apple Color Emoji.ttc"
-else:
-    if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
-        font_path = sys.argv[1]
-    else:
-        print("Font not detected, ensure you are running on MacOS or have"
-              " the font as the first argument!")
-        sys.exit(1)
+# This regex should match all PNG files in the emoji font.
+pattern = re.compile(b"\x89PNG\r\n\x1a\n.*?IEND", flags=re.DOTALL)
 
-with open(font_path, "rb") as font_file:
-    font = font_file.read()
+file_number = 0
 
-while index < len(font):
-    # Find the PNG header
-    if font[index:index + 8] == b'\x89PNG\r\n\x1a\n':
-        # Get the width of the image for the folder name as an integer
-        width = bin_to_int(font[index+16:index+20])
-        chunk_size = bin_to_int(font[index+8:index+12]) + 20
+for item in re.finditer(pattern, font):
+    start = item.start()
+    end = item.end()
+    # Get the ending location of each match, up to the ending of the IEND
+    # identifier, then add data and CRC fields
+    end += int.from_bytes(font[end-8:end-4], byteorder='big') + 4
+    # Get the size (in pixels) of the image, to be used as a folder name
+    size = str(int.from_bytes(font[start+16:start+20], byteorder='big'))
 
-        folder_name = "{}x{}".format(width, width)
-        if not os.path.exists(folder_name):
-            os.mkdir(folder_name)
+    if not os.path.exists(size):
+        os.mkdir(size)
+        # The apple emoji fonts are laid out by size, so if we haven't
+        # encountered that size, reset the file number counter
+        file_number = 0
 
-        if width not in folder_index:
-            folder_index[width] = 0
-
-        path = os.path.join(folder_name, "{}.png".format(folder_index[width]))
-
-        writing = True
-        out_file = open(path, "wb")
-        folder_index[width] += 1
-
-        # Write the header and the IHDR chunk code
-        out_file.write(font[index:index+chunk_size])
-
-        index += chunk_size
-
-    # Check for the IEND (Final) block
-    elif writing and font[index+4:index+8] == b"IEND":
-        chunk_size = bin_to_int(font[index:index+4]) + 12
-        out_file.write(font[index:index+chunk_size])
-        out_file.close()
-        writing = False
-
-        index += chunk_size
-
-    # For all blocks between IHDR and IEND
-    elif writing:
-        chunk_size = bin_to_int(font[index:index+4]) + 12
-        out_file.write(font[index:index+chunk_size])
-
-        index += chunk_size
-
-    # Traverse while not writing
-    else:
-        index += 1
+    # Write the output to a folder
+    with open(f"{size}/{file_number}.png", "wb") as out_file:
+        out_file.write(font[item.start():end])
+        file_number += 1
