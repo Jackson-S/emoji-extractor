@@ -1,13 +1,22 @@
 import re
 import os
+import sys
 
-# Some versions of OSX store the font as a ttf, and other as ttc.
-font_location = "/System/Library/Fonts/Apple Color Emoji.ttc"
-if not os.path.exists(font_location):
-    font_location = font_location[:-1] + "f"
+if len(sys.argv) == 1:
+    # Some versions of OSX store the font as a ttf, and other as ttc.
+    font_location = "/System/Library/Fonts/Apple Color Emoji.ttc"
+    if not os.path.exists(font_location):
+        font_location = font_location[:-1] + "f"
+else:
+    # If a font file is provided as an argument use it
+    font_location = sys.argv[1]
 
-with open(font_location, "rb") as in_file:
-    font = in_file.read()
+try:
+    with open(font_location, "rb") as in_file:
+        font = in_file.read()
+except FileNotFoundError:
+    print("File \"{}\" not found.".format(font_location))
+    exit(1)
 
 # This regex should match all PNG files in the emoji font.
 pattern = re.compile(b"\x89PNG\r\n\x1a\n.*?IEND", flags=re.DOTALL)
